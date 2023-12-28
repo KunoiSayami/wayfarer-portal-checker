@@ -1,8 +1,11 @@
 // ==UserScript==
 // @name         Wayfarer check submitted portal
-// @version      1.0.0-rc.1
+// @version      1.0.0-rc.3
 // @description  Check is friend nominate portal
 // @match        https://wayfarer.nianticlabs.com/*
+// @updateURL    https://github.com/KunoiSayami/wayfarer-portal-checker/raw/master/wayfarer-portal-checker.user.js
+// @downloadURL  https://github.com/KunoiSayami/wayfarer-portal-checker/raw/master/wayfarer-portal-checker.user.js
+// @homepage     https://github.com/KunoiSayami/wayfarer-portal-checker
 // @author       KunoiSayami
 // ==/UserScript==
 /* eslint-env es6 */
@@ -10,6 +13,8 @@
 'use strict';
 
 (function () {
+
+    const VERSION = "1.0.0-rc.3";
 
     const CHECKER_CONFIG_KEY = "wf-checker-config";
     const WAYFARER_EXPORTER_KEY = "wayfarerexporter-url";
@@ -38,7 +43,7 @@
 
             request.onsuccess = event => {
                 this.conn = event.target.result;
-                console.log("Database connected!");
+                console.log("Database connected!", VERSION);
             }
 
             request.onupgradeneeded = event => {
@@ -106,7 +111,7 @@
             }; */
 
             request.onerror = _event => {
-                console.log("Select", lat + lng, " failure");
+                console.log("Update", fields, " failure");
             }
         }
 
@@ -147,13 +152,14 @@
         server_config = { url: '', last_update: 0 };
     }
 
-    if (server_config === null || server_config.url.length === 0) {
+    if (server_config === null || server_config.url === null || server_config.url.length === 0) {
         // try read from wayfarer importer
         let exporter_url = localStorage.getItem(WAYFARER_EXPORTER_KEY);
         if (exporter_url === null || exporter_url.length === 0) {
-            let url = window.prompt("Please input wayfarer remote url");
+            let url = window.prompt("Please input wayfarer portal exporter remote url");
             server_config.url = url;
         } else {
+            console.info('wf-checker: Retrieve url from wf-exporter');
             server_config.url = exporter_url;
         }
         localStorage.setItem(CHECKER_CONFIG_KEY, JSON.stringify(server_config));
@@ -162,14 +168,14 @@
     updateRemote(server_config.url);
     addCss();
 
-    (function (open) {
+    ; (function (open) {
         XMLHttpRequest.prototype.open = function (method, url) {
             if (url === '/api/v1/vault/review') {
                 if (method === 'GET') {
                     this.addEventListener('load', parseCandidate, false);
                 }
                 if (method === 'POST') {
-                    hideButton();
+                    hideDiv();
                 }
             }
             open.apply(this, arguments)
@@ -181,6 +187,11 @@
         // If last update < 600, skip this update
         if (!force && server_config !== undefined && server_config.last_update !== undefined &&
             (new Date().getTime() - server_config.last_update) / 1000 < 600) {
+            return;
+        }
+
+        if (server_config.url === null) {
+            console.warn('Checker\'s remote url is null, skip update.');
             return;
         }
 
@@ -263,7 +274,7 @@
                 alert("Wayfarer's response didn't include a candidate.");
                 return;
             }
-            addButton(candidate);
+            addDiv(candidate);
         } catch (e) {
             console.log(e); // eslint-disable-line no-console
         }
@@ -280,19 +291,32 @@
 
             const select = document.createElement('select');
             select.title = 'Select options';
+            select.id = 'checker_selector';
             const engines = [
                 { name: 'update_remote', title: 'Update remote' },
                 { name: 'set_url', title: 'Set url' }
             ];
 
-            // WIP
             select.innerHTML = engines
                 .map(
                     (item) =>
-                        `<option value="${item.name}" ${item.name === 'set_url' ? 'selected' : ''
-                        }>${item.title}</option>`
+                        `<option value="${item.name}">${item.title}</option>`
                 )
                 .join('');
+
+            button.addEventListener('click', _event => {
+                if (document.getElementById('checker_selector').value === 'set_url') {
+                    let url = window.prompt("Please input wayfarer portal exporter remote url");
+                    if (url === null) {
+                        return;
+                    }
+                    server_config.url = url;
+                } else {
+                    updateRemote(server_config.url, true);
+                    server_config.last_update = new Date().getTime();
+                }
+                localStorage.setItem(CHECKER_CONFIG_KEY, JSON.stringify(server_config));
+            });
 
             div.appendChild(select);
             div.innerHTML += '&nbsp;';
@@ -312,7 +336,7 @@
         }
     }
 
-    function addButton(candidate) {
+    function addDiv(candidate) {
 
         const ref = document.querySelector('wf-logo');
 
@@ -331,7 +355,7 @@
                     );
                 return;
             }
-            setTimeout(addButton, 1000);
+            setTimeout(addDiv, 1000);
             tryNumber--;
             return;
         }
@@ -362,13 +386,14 @@
 
     }
 
-    function hideButton() {
+    function hideDiv() {
         global_button.classList.remove('wayfarer_checker__visible');
     }
 
 
     function addCss() {
         const css = `
+
             .wayfarer_checker {
                 color: #333;
                 margin-left: 2em;
@@ -376,9 +401,11 @@
                 text-align: center;
                 display: none;
             }
+
             .wayfarer_checker__visible {
                 display: inline;
             }
+
             .wayfarer_checker svg {
                 width: 24px;
                 height: 24px;
@@ -386,17 +413,21 @@
                 fill: currentColor;
                 margin: 0 auto;
             }
+
             .dark .wayfarer_checker {
                 color: #ddd;
             }
+
             .dark .wayfarer_checker select,
             .dark .wayfarer_checker option {
                 background: #000;
             }
+
             .wayfarer_checker span {
                 font-size: large;
                 color: red;
             }
+
             .wayfarer_checker_found {
                 color: green !important;
             }
